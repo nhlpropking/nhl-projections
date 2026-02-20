@@ -1,45 +1,146 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<title>NHL Projections</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NHL Projections</title>
 
-<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+  <!-- DataTables core -->
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+  <!-- DataTables FixedHeader -->
+  <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/3.4.0/css/fixedHeader.dataTables.min.css">
 
-<style>
-body { font-family: Arial; margin: 20px; }
-</style>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; }
+    .wrap { padding: 14px; }
+    .title { font-size: 18px; font-weight: 700; margin: 0 0 6px; }
+    .sub { font-size: 12px; opacity: 0.75; margin: 0 0 12px; }
+    /* Keep header readable when fixed */
+    table.dataTable thead th { white-space: nowrap; }
+  </style>
 </head>
 
 <body>
+  <div class="wrap">
+    <div class="title">NHL Projections</div>
+    <div class="sub">Sortable + searchable. Updates automatically from your Google Sheet.</div>
 
-<table id="proj" class="display" style="width:100%"></table>
+    <table id="proj" class="display" style="width:100%">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+  </div>
 
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+  <!-- jQuery + DataTables -->
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+  <!-- FixedHeader plugin -->
+  <script src="https://cdn.datatables.net/fixedheader/3.4.0/js/dataTables.fixedHeader.min.js"></script>
 
-<script>
+  <script>
+    // Your published Google Sheets CSV
+    const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS_3ssLtkzQg1enNOwyvnvPKCaHvmC6RjpiOZ81YkP1LOHjKixRTyFbUqXr_UN9PoiaVYIpXmKDEr4B/pub?output=csv&gid=0";
 
-const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS_3ssLtkzQg1enNOwyvnvPKCaHvmC6RjpiOZ81YkP1LOHjKixRTyFbUqXr_UN9PoiaVYIpXmKDEr4B/pub?output=csv&gid=0";
+    // Robust CSV parser (handles quotes/commas correctly)
+    function parseCSV(text) {
+      const rows = [];
+      let row = [];
+      let cell = "";
+      let inQuotes = false;
 
-fetch(csvUrl)
-.then(res => res.text())
-.then(data => {
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        const next = text[i + 1];
 
-const rows = data.split("\n").map(r => r.split(","));
-const headers = rows.shift();
+        // Handle escaped quotes ("")
+        if (c === '"' && inQuotes && next === '"') {
+          cell += '"';
+          i++;
+          continue;
+        }
 
-$('#proj').DataTable({
-data: rows,
-columns: headers.map(h => ({ title: h })),
-pageLength: 50,
-order: [[6, "desc"]],
-scrollX: true
-});
+        if (c === '"') {
+          inQuotes = !inQuotes;
+          continue;
+        }
 
-});
+        if (c === "," && !inQuotes) {
+          row.push(cell);
+          cell = "";
+          continue;
+        }
 
-</script>
+        if ((c === "\n" || c === "\r") && !inQuotes) {
+          // Handle CRLF
+          if (c === "\r" && next === "\n") i++;
+          row.push(cell);
+          cell = "";
 
+          // Skip totally empty trailing lines
+          if (row.length > 1 || (row.length === 1 && row[0].trim() !== "")) {
+            rows.push(row);
+          }
+          row = [];
+          continue;
+        }
+
+        cell += c;
+      }
+
+      // last cell/row
+      if (cell.length || row.length) {
+        row.push(cell);
+        if (row.length > 1 || (row.length === 1 && row[0].trim() !== "")) {
+          rows.push(row);
+        }
+      }
+      return rows;
+    }
+
+    async function loadTable() {
+      const res = await fetch(CSV_URL, { cache: "no-store" });
+      if (!res.ok) throw new Error("CSV fetch failed. Check Google publish settings.");
+      const csvText = await res.text();
+
+      const data = parseCSV(csvText);
+      if (!data.length) throw new Error("CSV empty.");
+
+      const headers = data.shift().map(h => h.trim());
+
+      // Clean rows: remove rows that don't match header length
+      const rows = data
+        .map(r => r.map(c => (c ?? "").trim()))
+        .filter(r => r.length === headers.length && r.some(v => v !== ""));
+
+      // Build thead
+      const thead = document.querySelector("#proj thead");
+      thead.innerHTML = "<tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr>";
+
+      // Build tbody
+      const tbody = document.querySelector("#proj tbody");
+      tbody.innerHTML = rows
+        .map(r => "<tr>" + r.map(c => `<td>${c}</td>`).join("") + "</tr>")
+        .join("");
+
+      // Init DataTable
+      const table = new DataTable("#proj", {
+        pageLength: 50,
+        lengthMenu: [[25, 50, 100, -1], [25, 50, 100, "All"]],
+        scrollX: true,
+        fixedHeader: true,
+        // Default sort: Projection column (7th column => index 6). If your column order changes, update this.
+        order: [[6, "desc"]]
+      });
+
+      // Ensure FixedHeader recalculates after render
+      table.fixedHeader.adjust();
+    }
+
+    loadTable().catch(err => {
+      console.error(err);
+      const sub = document.querySelector(".sub");
+      if (sub) sub.textContent = "Error loading projections. Check your Google Sheet publish settings.";
+    });
+  </script>
 </body>
 </html>
