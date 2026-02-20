@@ -5,141 +5,134 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>NHL Projections</title>
 
-  <!-- DataTables core -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
-  <!-- DataTables FixedHeader -->
   <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/3.4.0/css/fixedHeader.dataTables.min.css">
 
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; }
-    .wrap { padding: 14px; }
-    .title { font-size: 18px; font-weight: 700; margin: 0 0 6px; }
-    .sub { font-size: 12px; opacity: 0.75; margin: 0 0 12px; }
-    /* Keep header readable when fixed */
+    body { font-family: Arial, sans-serif; margin: 0; padding: 12px; }
+    .wrap { max-width: 1400px; margin: 0 auto; }
+    .meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
     table.dataTable thead th { white-space: nowrap; }
+    .dtfh-floatingparent { z-index: 99999 !important; }
   </style>
 </head>
 
 <body>
   <div class="wrap">
-    <div class="title">NHL Projections</div>
+
+    <div class="meta">
+      <div id="status">Loading projections…</div>
+      <div id="updated"></div>
+    </div>
 
     <table id="proj" class="display" style="width:100%">
-      <thead></thead>
+      <thead>
+        <tr id="hdr"></tr>
+      </thead>
       <tbody></tbody>
     </table>
+
   </div>
 
-  <!-- jQuery + DataTables -->
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
-  <!-- FixedHeader plugin -->
   <script src="https://cdn.datatables.net/fixedheader/3.4.0/js/dataTables.fixedHeader.min.js"></script>
 
   <script>
-    // Your published Google Sheets CSV
-    const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS_3ssLtkzQg1enNOwyvnvPKCaHvmC6RjpiOZ81YkP1LOHjKixRTyFbUqXr_UN9PoiaVYIpXmKDEr4B/pub?output=csv&gid=0";
 
-    // Robust CSV parser (handles quotes/commas correctly)
+    const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS_3ssLtkzQg1enNOwyvnvPKCaHvmC6RjpiOZ81YkP1LOHjKixRTyFbUqXr_UN9PoiaVYIpXmKDEr4B/pub?gid=0&single=true&output=csv";
+
     function parseCSV(text) {
       const rows = [];
-      let row = [];
-      let cell = "";
-      let inQuotes = false;
+      let row = [], cur = "", inQuotes = false;
 
       for (let i = 0; i < text.length; i++) {
-        const c = text[i];
-        const next = text[i + 1];
+        const c = text[i], n = text[i + 1];
 
-        // Handle escaped quotes ("")
-        if (c === '"' && inQuotes && next === '"') {
-          cell += '"';
-          i++;
+        if (c === '"' && inQuotes && n === '"') { cur += '"'; i++; continue; }
+        if (c === '"') { inQuotes = !inQuotes; continue; }
+
+        if (c === ',' && !inQuotes) { row.push(cur); cur = ""; continue; }
+
+        if ((c === '\n' || c === '\r') && !inQuotes) {
+          if (c === '\r' && n === '\n') i++;
+          if (cur.length || row.length) { row.push(cur); rows.push(row); }
+          row = []; cur = "";
           continue;
         }
-
-        if (c === '"') {
-          inQuotes = !inQuotes;
-          continue;
-        }
-
-        if (c === "," && !inQuotes) {
-          row.push(cell);
-          cell = "";
-          continue;
-        }
-
-        if ((c === "\n" || c === "\r") && !inQuotes) {
-          // Handle CRLF
-          if (c === "\r" && next === "\n") i++;
-          row.push(cell);
-          cell = "";
-
-          // Skip totally empty trailing lines
-          if (row.length > 1 || (row.length === 1 && row[0].trim() !== "")) {
-            rows.push(row);
-          }
-          row = [];
-          continue;
-        }
-
-        cell += c;
+        cur += c;
       }
 
-      // last cell/row
-      if (cell.length || row.length) {
-        row.push(cell);
-        if (row.length > 1 || (row.length === 1 && row[0].trim() !== "")) {
-          rows.push(row);
-        }
-      }
-      return rows;
+      if (cur.length || row.length) { row.push(cur); rows.push(row); }
+
+      return rows.filter(r => r.some(cell => cell.trim() !== ""));
+    }
+
+    function isNumeric(val) {
+      if (!val) return false;
+      return !isNaN(val.replace(/[%,$]/g, ""));
     }
 
     async function loadTable() {
+
       const res = await fetch(CSV_URL, { cache: "no-store" });
-      if (!res.ok) throw new Error("CSV fetch failed. Check Google publish settings.");
-      const csvText = await res.text();
+      const csv = await res.text();
 
-      const data = parseCSV(csvText);
-      if (!data.length) throw new Error("CSV empty.");
+      const data = parseCSV(csv);
 
-      const headers = data.shift().map(h => h.trim());
+      const headers = data[0];
+      const body = data.slice(1);
 
-      // Clean rows: remove rows that don't match header length
-      const rows = data
-        .map(r => r.map(c => (c ?? "").trim()))
-        .filter(r => r.length === headers.length && r.some(v => v !== ""));
+      const hdr = document.getElementById("hdr");
+      hdr.innerHTML = "";
 
-      // Build thead
-      const thead = document.querySelector("#proj thead");
-      thead.innerHTML = "<tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr>";
-
-      // Build tbody
-      const tbody = document.querySelector("#proj tbody");
-      tbody.innerHTML = rows
-        .map(r => "<tr>" + r.map(c => `<td>${c}</td>`).join("") + "</tr>")
-        .join("");
-
-      // Init DataTable
-      const table = new DataTable("#proj", {
-        pageLength: 50,
-        lengthMenu: [[25, 50, 100, -1], [25, 50, 100, "All"]],
-        scrollX: true,
-        fixedHeader: true,
-        // Default sort: Projection column (7th column => index 6). If your column order changes, update this.
-        order: [[6, "desc"]]
+      headers.forEach(h => {
+        const th = document.createElement("th");
+        th.textContent = h;
+        hdr.appendChild(th);
       });
 
-      // Ensure FixedHeader recalculates after render
-      table.fixedHeader.adjust();
+      const rows = body.map(r => headers.map((_, i) => (r[i] || "").trim()));
+
+      const colDefs = headers.map((_, i) => {
+        const sample = rows.slice(0, 20).map(r => r[i]).filter(Boolean);
+        const numericish = sample.length && sample.every(isNumeric);
+        return numericish ? { targets: i, className: "dt-body-right" } : { targets: i };
+      });
+
+      $("#proj").DataTable({
+        data: rows,
+        columns: headers.map(h => ({ title: h })),
+
+        scrollY: "65vh",
+        scrollCollapse: true,
+        scrollX: true,
+
+        pageLength: 50,
+        lengthMenu: [10, 25, 50, 100, 250],
+
+        order: [],
+        deferRender: true,
+
+        fixedHeader: true,
+
+        columnDefs: colDefs
+      });
+
+      document.getElementById("status").textContent = "Loaded";
+      document.getElementById("updated").textContent =
+        "Updated: " + new Date().toLocaleString();
     }
 
-    loadTable().catch(err => {
-      console.error(err);
-      const sub = document.querySelector(".sub");
-      if (sub) sub.textContent = "Error loading projections. Check your Google Sheet publish settings.";
-    });
+    loadTable();
+
   </script>
+
 </body>
 </html>
