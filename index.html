@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>NHL Projections</title>
+
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+
+<style>
+body { font-family: Arial; margin: 20px; }
+</style>
+</head>
+
+<body>
+
+<table id="proj" class="display" style="width:100%"></table>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+
+<script>
+
+const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS_3ssLtkzQg1enNOwyvnvPKCaHvmC6RjpiOZ81YkP1LOHjKixRTyFbUqXr_UN9PoiaVYIpXmKDEr4B/pub?output=csv&gid=0";
+
+fetch(csvUrl)
+.then(res => res.text())
+.then(data => {
+
+const rows = data.split("\n").map(r => r.split(","));
+const headers = rows.shift();
+
+$('#proj').DataTable({
+data: rows,
+columns: headers.map(h => ({ title: h })),
+pageLength: 50,
+order: [[6, "desc"]],
+scrollX: true
+});
+
+});
+
+</script>
+
+</body>
+</html>
