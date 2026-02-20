@@ -17,27 +17,29 @@
       font-size: 12px;
       margin-bottom: 8px;
       flex-wrap: wrap;
+      gap: 8px;
     }
     table.dataTable thead th { white-space: nowrap; }
     .dtfh-floatingparent { z-index: 99999 !important; }
+
+    @media (max-width: 768px) {
+      body { padding: 8px; }
+      table.dataTable { font-size: 12px; }
+    }
   </style>
 </head>
 
 <body>
-  <div class="wrap">
-
+  <div class="wrap" id="wrap">
     <div class="meta">
       <div id="status">Loading projections…</div>
       <div id="updated"></div>
     </div>
 
     <table id="proj" class="display" style="width:100%">
-      <thead>
-        <tr id="hdr"></tr>
-      </thead>
+      <thead><tr id="hdr"></tr></thead>
       <tbody></tbody>
     </table>
-
   </div>
 
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
@@ -45,8 +47,11 @@
   <script src="https://cdn.datatables.net/fixedheader/3.4.0/js/dataTables.fixedHeader.min.js"></script>
 
   <script>
-
     const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS_3ssLtkzQg1enNOwyvnvPKCaHvmC6RjpiOZ81YkP1LOHjKixRTyFbUqXr_UN9PoiaVYIpXmKDEr4B/pub?gid=0&single=true&output=csv";
+
+    // Treat anything under this container width as “mobile”
+    // (GoDaddy iframes can report weird widths; 950 is a safe breakpoint)
+    const MOBILE_WIDTH_PX = 950;
 
     function parseCSV(text) {
       const rows = [];
@@ -68,71 +73,135 @@
         }
         cur += c;
       }
-
       if (cur.length || row.length) { row.push(cur); rows.push(row); }
 
-      return rows.filter(r => r.some(cell => cell.trim() !== ""));
+      return rows.filter(r => r.some(cell => String(cell ?? "").trim() !== ""));
     }
 
-    function isNumeric(val) {
-      if (!val) return false;
-      return !isNaN(val.replace(/[%,$]/g, ""));
+    function normalizeHeader(h) {
+      return String(h ?? "").trim().toLowerCase();
     }
 
-    async function loadTable() {
+    function findColumnIndex(headers, candidates) {
+      const normalized = headers.map(normalizeHeader);
+      for (const cand of candidates) {
+        const idx = normalized.indexOf(normalizeHeader(cand));
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    }
 
+    function isMobileNow() {
+      const wrap = document.getElementById("wrap");
+      const w = wrap ? wrap.getBoundingClientRect().width : window.innerWidth;
+      return w < MOBILE_WIDTH_PX;
+    }
+
+    function applyMobileColumns(dt, headers) {
+      const mobile = isMobileNow();
+
+      // Find the 4 columns by name (case-insensitive)
+      const idxPlayer = findColumnIndex(headers, ["Player", "Skater", "Name"]);
+      const idxTeam   = findColumnIndex(headers, ["Team"]);
+      const idxOpp    = findColumnIndex(headers, ["Opp", "Opponent"]);
+      const idxProj   = findColumnIndex(headers, ["Projections", "Projection", "Proj"]);
+
+      // If any header match fails, fallback to first 4 columns
+      const fallback = [0, 1, 2, 3].filter(i => i < headers.length);
+      const keep = [idxPlayer, idxTeam, idxOpp, idxProj].every(i => i >= 0)
+        ? [idxPlayer, idxTeam, idxOpp, idxProj]
+        : fallback;
+
+      // Force visibility
+      for (let i = 0; i < headers.length; i++) {
+        dt.column(i).visible(!mobile); // desktop = show all
+      }
+
+      if (mobile) {
+        for (let i = 0; i < headers.length; i++) dt.column(i).visible(false, false);
+        keep.forEach(i => dt.column(i).visible(true, false));
+      }
+
+      // On mobile, no horizontal scroll needed
+      // (scrollX is set at init, but we can still adjust layout)
+      dt.columns.adjust().draw(false);
+
+      // Debug line you can keep or remove
+      document.getElementById("status").textContent = mobile
+        ? "Loaded (Mobile view: 4 columns)"
+        : "Loaded (Desktop view: all columns)";
+    }
+
+    async function init() {
       const res = await fetch(CSV_URL, { cache: "no-store" });
+      if (!res.ok) throw new Error("CSV fetch failed: " + res.status);
+
       const csv = await res.text();
-
       const data = parseCSV(csv);
+      if (!data.length || data.length < 2) throw new Error("CSV empty/missing rows.");
 
-      const headers = data[0];
+      const headers = data[0].map(h => String(h ?? "").trim());
       const body = data.slice(1);
 
+      // Build header row
       const hdr = document.getElementById("hdr");
       hdr.innerHTML = "";
-
       headers.forEach(h => {
         const th = document.createElement("th");
         th.textContent = h;
         hdr.appendChild(th);
       });
 
-      const rows = body.map(r => headers.map((_, i) => (r[i] || "").trim()));
+      const rows = body.map(r => headers.map((_, i) => String(r[i] ?? "").trim()));
 
-      const colDefs = headers.map((_, i) => {
-        const sample = rows.slice(0, 20).map(r => r[i]).filter(Boolean);
-        const numericish = sample.length && sample.every(isNumeric);
-        return numericish ? { targets: i, className: "dt-body-right" } : { targets: i };
-      });
+      // Destroy if already exists
+      if ($.fn.dataTable.isDataTable("#proj")) {
+        $("#proj").DataTable().destroy();
+        $("#proj tbody").empty();
+      }
 
-      $("#proj").DataTable({
+      const dt = $("#proj").DataTable({
         data: rows,
         columns: headers.map(h => ({ title: h })),
 
+        // Sticky header in GoDaddy iframe
         scrollY: "65vh",
         scrollCollapse: true,
+
+        // Keep this on for desktop (mobile will hide columns anyway)
         scrollX: true,
 
+        paging: true,
         pageLength: 50,
         lengthMenu: [10, 25, 50, 100, 250],
-
         order: [],
         deferRender: true,
 
-        fixedHeader: true,
-
-        columnDefs: colDefs
+        fixedHeader: true
       });
 
-      document.getElementById("status").textContent = "Loaded";
+      // Apply mobile/desktop column logic AFTER init (guaranteed)
+      applyMobileColumns(dt, headers);
+
       document.getElementById("updated").textContent =
         "Updated: " + new Date().toLocaleString();
+
+      // Re-apply on resize/orientation change (debounced)
+      let t;
+      window.addEventListener("resize", () => {
+        clearTimeout(t);
+        t = setTimeout(() => applyMobileColumns(dt, headers), 150);
+      });
+      window.addEventListener("orientationchange", () => {
+        setTimeout(() => applyMobileColumns(dt, headers), 250);
+      });
     }
 
-    loadTable();
-
+    init().catch(err => {
+      console.error(err);
+      document.getElementById("status").textContent =
+        "Error loading projections. Check CSV publish/link.";
+    });
   </script>
-
 </body>
 </html>
