@@ -9,37 +9,265 @@
   <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/3.4.0/css/fixedHeader.dataTables.min.css">
 
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 12px; }
-    .wrap { max-width: 1400px; margin: 0 auto; }
-    .meta {
-      display: flex;
-      justify-content: space-between;
-      font-size: 12px;
-      margin-bottom: 8px;
-      flex-wrap: wrap;
-      gap: 8px;
+    :root{
+      --bg:#0b0f16;
+      --panel:#111827;
+      --panel2:#0f172a;
+      --text:#e5e7eb;
+      --muted:#9ca3af;
+      --gold:#d4af37;
+      --line:rgba(212,175,55,0.22);
+      --shadow: 0 10px 30px rgba(0,0,0,0.35);
+      --radius: 18px;
+      --chip: rgba(212,175,55,0.08);
+      --chipLine: rgba(212,175,55,0.28);
+      --good: #22c55e;
     }
-    table.dataTable thead th { white-space: nowrap; }
+
+    *{ box-sizing:border-box; }
+    html{ -webkit-text-size-adjust:100%; text-rendering: optimizeLegibility; }
+    body{
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Arial, sans-serif;
+      margin:0;
+      padding: 14px;
+      background:
+        radial-gradient(900px 500px at 30% 0%, rgba(212,175,55,0.08), transparent 55%),
+        radial-gradient(900px 500px at 80% 30%, rgba(99,102,241,0.06), transparent 55%),
+        var(--bg);
+      color: var(--text);
+      line-height:1.35;
+    }
+
+    .wrap{
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* ====== command header ====== */
+    .topbar{
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(17,24,39,0.92), rgba(15,23,42,0.88));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 14px 14px 12px;
+      margin-bottom: 12px;
+      overflow:hidden;
+      position:relative;
+    }
+    .topbar:after{
+      content:"";
+      position:absolute;
+      inset:-1px;
+      background: radial-gradient(70% 55% at 80% 30%, rgba(212,175,55,0.18), transparent 60%);
+      opacity:.55;
+      pointer-events:none;
+    }
+
+    .title-row{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap: 10px;
+      flex-wrap:wrap;
+      position:relative;
+      z-index:1;
+    }
+    .titleblock{
+      min-width: 240px;
+    }
+    .kicker{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--chipLine);
+      background: var(--chip);
+      color: var(--gold);
+      font-weight: 800;
+      font-size: 12.5px;
+      letter-spacing: .2px;
+    }
+    h1{
+      margin: 10px 0 2px;
+      font-size: 22px;
+      letter-spacing: -0.2px;
+    }
+    .sub{
+      margin:0;
+      color: rgba(229,231,235,0.72);
+      font-size: 13px;
+    }
+
+    .meta{
+      display:flex;
+      justify-content:flex-end;
+      gap: 10px;
+      flex-wrap:wrap;
+      position:relative;
+      z-index:1;
+    }
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(229,231,235,0.12);
+      background: rgba(255,255,255,0.03);
+      color: rgba(229,231,235,0.85);
+      font-size: 12.5px;
+      white-space:nowrap;
+    }
+    .dot{
+      width:8px; height:8px; border-radius:999px; background: var(--good);
+      box-shadow: 0 0 0 3px rgba(34,197,94,0.12);
+      flex-shrink:0;
+    }
+
+    /* ====== table shell ====== */
+    .table-shell{
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(17,24,39,0.88), rgba(15,23,42,0.86));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 10px 10px 12px;
+      overflow:hidden;
+    }
+
+    /* Keep FixedHeader on top inside iframe */
     .dtfh-floatingparent { z-index: 99999 !important; }
 
+    /* ====== DataTables styling ====== */
+    /* Controls row (search, length, info) */
+    div.dataTables_wrapper div.dataTables_length label,
+    div.dataTables_wrapper div.dataTables_filter label,
+    div.dataTables_wrapper div.dataTables_info,
+    div.dataTables_wrapper div.dataTables_paginate{
+      color: rgba(229,231,235,0.78) !important;
+      font-size: 12.5px;
+    }
+
+    /* Inputs */
+    div.dataTables_wrapper div.dataTables_filter input,
+    div.dataTables_wrapper div.dataTables_length select{
+      background: rgba(255,255,255,0.04) !important;
+      border: 1px solid rgba(229,231,235,0.14) !important;
+      color: var(--text) !important;
+      border-radius: 10px !important;
+      padding: 7px 10px !important;
+      outline: none !important;
+    }
+    div.dataTables_wrapper div.dataTables_filter input:focus,
+    div.dataTables_wrapper div.dataTables_length select:focus{
+      border-color: rgba(212,175,55,0.35) !important;
+      box-shadow: 0 0 0 3px rgba(212,175,55,0.10) !important;
+    }
+
+    /* Table base */
+    table.dataTable{
+      border-collapse: separate !important;
+      border-spacing: 0 !important;
+      width:100% !important;
+      color: var(--text) !important;
+    }
+
+    /* Header row */
+    table.dataTable thead th{
+      white-space: nowrap;
+      background: rgba(255,255,255,0.03) !important;
+      color: rgba(229,231,235,0.9) !important;
+      border-bottom: 1px solid rgba(212,175,55,0.22) !important;
+      padding: 10px 10px !important;
+    }
+
+    /* Body cells */
+    table.dataTable tbody td{
+      padding: 10px 10px !important;
+      border-top: 1px solid rgba(255,255,255,0.06) !important;
+      color: rgba(229,231,235,0.88) !important;
+    }
+
+    /* Row hover */
+    table.dataTable tbody tr:hover{
+      background: rgba(212,175,55,0.06) !important;
+    }
+
+    /* Pagination buttons */
+    .dataTables_wrapper .dataTables_paginate .paginate_button{
+      border-radius: 10px !important;
+      border: 1px solid rgba(229,231,235,0.12) !important;
+      background: rgba(255,255,255,0.03) !important;
+      color: rgba(229,231,235,0.85) !important;
+      margin: 0 2px !important;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button:hover{
+      border-color: rgba(212,175,55,0.35) !important;
+      background: rgba(212,175,55,0.10) !important;
+      color: var(--text) !important;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button.current{
+      border-color: rgba(212,175,55,0.45) !important;
+      background: rgba(212,175,55,0.16) !important;
+      color: var(--text) !important;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button.disabled{
+      opacity: .45 !important;
+      cursor: default !important;
+    }
+
+    /* Remove default striping so our hover looks clean */
+    table.dataTable.stripe tbody tr.odd,
+    table.dataTable.display tbody tr.odd{
+      background-color: transparent !important;
+    }
+
+    /* Make DataTables “processing” readable if it shows */
+    div.dataTables_processing{
+      background: rgba(15,23,42,0.92) !important;
+      border: 1px solid var(--line) !important;
+      color: var(--text) !important;
+      border-radius: 12px !important;
+      box-shadow: var(--shadow) !important;
+    }
+
     @media (max-width: 768px) {
-      body { padding: 8px; }
+      body { padding: 10px; }
+      h1{ font-size: 20px; }
       table.dataTable { font-size: 12px; }
+      table.dataTable thead th,
+      table.dataTable tbody td{ padding: 9px 8px !important; }
+      .topbar{ padding: 12px; }
+      .table-shell{ padding: 8px; }
+      .meta{ justify-content:flex-start; }
     }
   </style>
 </head>
 
 <body>
   <div class="wrap" id="wrap">
-    <div class="meta">
-      <div id="status">Loading projections…</div>
-      <div id="updated"></div>
+
+    <!-- ✅ NEW: premium command header (visual only) -->
+    <div class="topbar">
+      <div class="title-row">
+        <div class="titleblock">
+          <div class="kicker">👑 NHLPropKing • Projection Model</div>
+          <h1>NHL Projections</h1>
+          <p class="sub">Fast, searchable, mobile-friendly. Built for the King’s Men.</p>
+        </div>
+        <div class="meta">
+          <div class="pill"><span class="dot"></span><span id="status">Loading projections…</span></div>
+          <div class="pill" id="updated"></div>
+        </div>
+      </div>
     </div>
 
-    <table id="proj" class="display" style="width:100%">
-      <thead><tr id="hdr"></tr></thead>
-      <tbody></tbody>
-    </table>
+    <div class="table-shell">
+      <table id="proj" class="display" style="width:100%">
+        <thead><tr id="hdr"></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
@@ -122,11 +350,9 @@
         keep.forEach(i => dt.column(i).visible(true, false));
       }
 
-      // On mobile, no horizontal scroll needed
-      // (scrollX is set at init, but we can still adjust layout)
       dt.columns.adjust().draw(false);
 
-      // Debug line you can keep or remove
+      // Status text remains your existing behavior (just nicer container now)
       document.getElementById("status").textContent = mobile
         ? "Loaded (Mobile view: 4 columns)"
         : "Loaded (Desktop view: all columns)";
@@ -180,13 +406,11 @@
         fixedHeader: true
       });
 
-      // Apply mobile/desktop column logic AFTER init (guaranteed)
       applyMobileColumns(dt, headers);
 
       document.getElementById("updated").textContent =
         "Updated: " + new Date().toLocaleString();
 
-      // Re-apply on resize/orientation change (debounced)
       let t;
       window.addEventListener("resize", () => {
         clearTimeout(t);
@@ -201,6 +425,7 @@
       console.error(err);
       document.getElementById("status").textContent =
         "Error loading projections. Check CSV publish/link.";
+      document.getElementById("updated").textContent = "";
     });
   </script>
 </body>
